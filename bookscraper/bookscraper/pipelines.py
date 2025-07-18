@@ -2,8 +2,10 @@
 #
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
+from itertools import product
+from zoneinfo import available_timezones
 
-
+from MySQLdb.constants.FIELD_TYPE import DECIMAL
 # useful for handling different item types with a single interface
 from itemadapter import ItemAdapter
 
@@ -77,3 +79,78 @@ class BookscraperPipeline:
                 adapter['stars'] = 0
 
         return item
+
+
+
+import mysql.connector
+
+class SaveToMySQLPipeline:
+
+    def __init__(self):
+        self.conn = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password='kaosisom09',
+            database='books'
+        )
+        self.cur = self.conn.cursor()
+
+        # Create the table if it doesn't exist
+        self.cur.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id INT NOT NULL AUTO_INCREMENT,
+                url VARCHAR(255),
+                title TEXT,
+                upc VARCHAR(255),
+                product_type VARCHAR(255),
+                price_excl_tax DECIMAL(10, 2),
+                price_incl_tax DECIMAL(10, 2),
+                tax DECIMAL(10, 2),
+                availability INT,
+                num_reviews INT,
+                stars INT,
+                category VARCHAR(255),
+                description TEXT,
+                PRIMARY KEY (id)
+            )
+        """)
+
+    def process_item(self, item, spider):
+        self.cur.execute("""
+            INSERT INTO books (
+                url,
+                title,
+                upc,
+                product_type,
+                price_excl_tax,
+                price_incl_tax,
+                tax,
+                availability,
+                num_reviews,
+                stars,
+                category,
+                description
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s
+            )
+        """, (
+            item.get("url", ""),
+            item.get("title", ""),
+            item.get("upc", ""),
+            item.get("product_type", ""),
+            item.get("price_excl_tax", 0.0),
+            item.get("price_incl_tax", 0.0),
+            item.get("tax", 0.0),
+            item.get("availability", 0),
+            item.get("num_reviews", 0),
+            item.get("stars", 0),
+            item.get("category", ""),
+            item.get("description", "")
+        ))
+        self.conn.commit()
+        return item
+
+    def close_spider(self, spider):
+        self.cur.close()
+        self.conn.close()

@@ -2,8 +2,12 @@
 #
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+from http.client import responses
 
 from scrapy import signals
+import requests
+from urllib.parse import urlencode
+from random import randint
 
 # useful for handling different item types with a single interface
 from itemadapter import ItemAdapter
@@ -98,3 +102,109 @@ class BookscraperDownloaderMiddleware:
 
     def spider_opened(self, spider):
         spider.logger.info("Spider opened: %s" % spider.name)
+
+
+import requests
+from urllib.parse import urlencode
+from random import randint
+
+class ScrapeOpsFakeUserAgentMiddleware:
+    def __init__(self, settings):
+        self.scrapeops_api_key = settings.get('SCRAPEOPS_API_KEY')
+        self.scrapeops_endpoint = settings.get(
+            'SCRAPEOPS_FAKE_USER_AGENT_ENDPOINT',
+            'https://headers.scrapeops.io/v1/user-agents'
+        )
+        self.scrapeops_fake_user_agents_active = settings.get('SCRAPOPS_FAKE_USER_AGENTS_ENABLED', True)
+        self.scrapeops_num_results = settings.get('SCRAPEOPS_NUM_RESULTS')
+        self.user_agent_list = []
+
+        self._get_user_agents_list()
+        self._scrapeops_fake_user_agents_enabled()  # fixed method name
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings)
+
+    def _get_user_agents_list(self):
+        payload = {'api_key': self.scrapeops_api_key}
+        if self.scrapeops_num_results is not None:
+            payload['num_results'] = self.scrapeops_num_results
+        response = requests.get(self.scrapeops_endpoint, params=urlencode(payload))
+        json_response = response.json()
+        self.user_agent_list = json_response.get('result', [])
+
+    def _get_random_user_agent(self):
+        if not self.user_agent_list:
+            raise Exception("User agent list is empty. Check your ScrapeOps API key or network.")
+        random_index = randint(0, len(self.user_agent_list) - 1)
+        return self.user_agent_list[random_index]
+
+    def _scrapeops_fake_user_agents_enabled(self):
+        if not self.scrapeops_api_key or not self.scrapeops_endpoint:
+            self.scrapeops_fake_user_agents_active = False
+        else:
+            self.scrapeops_fake_user_agents_active = True
+
+    def process_request(self, request, spider):
+        if self.scrapeops_fake_user_agents_active:
+            request.headers['User-Agent'] = self._get_random_user_agent()
+
+        print("********** NEW HEADER ATTACHED **********")
+        print(request.headers['User-Agent'])
+
+
+
+
+class ScrapeOpsFakeBrowserHeaderAgentMiddleware:
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings)
+
+    def __init__(self, settings):
+        self.scrapeops_api_key = settings.get('SCRAPEOPS_API_KEY')
+        self.scrapeops_endpoint = settings.get(
+            'SCRAPEOPS_FAKE_BROWSER_HEADER_ENDPOINT',
+            'https://headers.scrapeops.io/v1/browser-headers'
+        )
+        self.scrapeops_fake_browser_headers_active = settings.get('SCRAPEOPS_FAKE_BROWSER_HEADER_ENABLED', True)
+        self.scrapeops_num_results = settings.get('SCRAPEOPS_NUM_RESULTS')
+        self.headers_list = []
+
+        self._get_headers_list()
+        self._scrapeops_fake_browser_header_enabled()
+
+    def _get_headers_list(self):
+        payload = {'api_key': self.scrapeops_api_key}
+        if self.scrapeops_num_results is not None:
+            payload['num_results'] = self.scrapeops_num_results
+        try:
+            response = requests.get(self.scrapeops_endpoint, params=urlencode(payload))
+            response.raise_for_status()
+            json_response = response.json()
+            self.headers_list = json_response.get('result', [])
+        except Exception as e:
+            print(f"Failed to fetch browser headers: {e}")
+            self.headers_list = []
+
+    def _get_random_browser_header(self):
+        if not self.headers_list:
+            raise Exception("Browser headers list is empty. Check your ScrapeOps API key or network.")
+        random_index = randint(0, len(self.headers_list) - 1)
+        return self.headers_list[random_index]
+
+    def _scrapeops_fake_browser_header_enabled(self):
+        if not self.scrapeops_api_key or not self.scrapeops_endpoint:
+            self.scrapeops_fake_browser_headers_active = False
+        else:
+            self.scrapeops_fake_browser_headers_active = True
+
+    def process_request(self, request, spider):
+        if self.scrapeops_fake_browser_headers_active:
+            random_browser_header = self._get_random_browser_header()
+            for key, value in random_browser_header.items():
+                request.headers[key.title()] = value
+
+        print("********** NEW HEADER ATTACHED **********")
+        print(request.headers)
